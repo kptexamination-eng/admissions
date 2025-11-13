@@ -1,0 +1,444 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum AdmissionType {
+  REGULAR
+  LATERAL_ENTRY
+  MIGRATION
+  TRANSFER
+}
+
+enum ExamType {
+  MID
+  SEMESTER
+  PRACTICAL
+  SUPPLEMENTARY
+  REVALUATION
+}
+
+enum SessionType {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum MarkStatus {
+  ENTERED
+  VERIFIED
+  LOCKED
+  UNDER_REVALUATION
+  MODERATED
+}
+
+model Department {
+  id        Int       @id @default(autoincrement())
+  code      String    @unique
+  name      String
+  programs  Program[]
+  staff     Staff[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Program {
+  id               Int        @id @default(autoincrement())
+  name             String
+  code             String     @unique
+  durationYears    Int
+  startYear        Int
+  sanctionedIntake Int
+  departmentId     Int
+  department       Department @relation(fields: [departmentId], references: [id])
+  batches          Batch[]
+  subjects         Subject[]
+  exams            Exam[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+}
+
+model Batch {
+  id        Int      @id @default(autoincrement())
+  name      String   // e.g., "2022"
+  year      Int
+  programId Int
+  program   Program  @relation(fields: [programId], references: [id])
+  students  Student[]
+  createdAt DateTime @default(now())
+  @@unique([programId, year])
+}
+
+model Address {
+  id           Int     @id @default(autoincrement())
+  line1        String
+  line2        String?
+  city         String
+  state        String
+  country      String  @default("India")
+  postalCode   String
+  isCurrent    Boolean @default(false)
+  isPermanent  Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  // Note: address is reusable; link via StudentAddress relation
+}
+
+model Contact {
+  id         Int     @id @default(autoincrement())
+  name       String
+  relation   String?
+  phone      String
+  email      String?
+  isPrimary  Boolean @default(false)
+  createdAt  DateTime @default(now())
+}
+
+model Student {
+  id                 String      @id @default(uuid())
+  registerNo         String      @unique                          // e.g., 103CS22001
+  aadhaarNumber      String?     @unique
+  firstName          String
+  middleName         String?
+  lastName           String?
+  dob                DateTime?
+  gender             Gender?
+  bloodGroup         String?
+  motherTongue       String?
+  religion           String?
+  casteCategory      String?     // e.g., General/SC/ST/OBC
+  nationality        String?     @default("Indian")
+  passportNumber     String?
+  admissionType      AdmissionType @default(REGULAR)
+  admissionDate      DateTime?
+  admissionYear      Int?
+  admissionRemarks   String?
+  enrollmentNo       String?     // University enrollment no if any
+  batchId            Int
+  batch              Batch       @relation(fields: [batchId], references: [id])
+  currentSem         Int
+  status             String      @default("active") // active, graduated, discontinued
+  // Addresses & contacts (relations)
+  addresses          StudentAddress[]
+  contacts           StudentContact[]
+  // Academic records
+  marks              Mark[]
+  attendance         Attendance[]
+  results            Result[]
+  // Documents & files: photo, aadhaarScan, tc etc.
+  files              FileReference[]
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@index([registerNo])
+  @@index([batchId, currentSem])
+}
+
+model StudentAddress {
+  id         Int      @id @default(autoincrement())
+  studentId  String
+  addressId  Int
+  address    Address  @relation(fields: [addressId], references: [id])
+  type       String   // "permanent" | "current" | "guardian"
+  student    Student  @relation(fields: [studentId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model StudentContact {
+  id         Int      @id @default(autoincrement())
+  studentId  String
+  contactId  Int
+  contact    Contact  @relation(fields: [contactId], references: [id])
+  type       String   // "father" | "mother" | "guardian" | "emergency"
+  student    Student  @relation(fields: [studentId], references: [id])
+  createdAt  DateTime @default(now())
+}
+
+model Staff {
+  id             String    @id @default(uuid())
+  publicId       String?   @unique   // Clerk userId or external auth id
+  staffCode      String?   @unique
+  firstName      String
+  lastName       String?
+  email          String    @unique
+  phone          String?
+  designation    String?   // Lecturer, HOD, COE, Clerk, etc.
+  role           String    // app-level role: admin, hod, staff, coe, etc.
+  departmentId   Int?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  joiningDate    DateTime?
+  dob            DateTime?
+  gender         Gender?
+  addressId      Int?
+  address        Address?  @relation(fields: [addressId], references: [id])
+  files          FileReference[]
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([publicId])
+  @@index([departmentId])
+}
+
+model Subject {
+  id          Int       @id @default(autoincrement())
+  code        String    @unique
+  name        String
+  description String?
+  semester    Int
+  credits     Int       @default(0)
+  isPractical Boolean   @default(false)
+  programId   Int
+  program     Program   @relation(fields: [programId], references: [id])
+  examPaperTemplates QuestionPaper[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  @@index([programId, semester])
+}
+
+model Exam {
+  id          Int       @id @default(autoincrement())
+  name        String
+  examType    ExamType
+  programId   Int
+  program     Program   @relation(fields: [programId], references: [id])
+  semester    Int
+  startDate   DateTime
+  endDate     DateTime
+  published   Boolean   @default(false)
+  schedules   ExamSchedule[]
+  marks       Mark[]
+  results     Result[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  @@index([programId, semester])
+}
+
+model ExamSchedule {
+  id         Int      @id @default(autoincrement())
+  examId     Int
+  subjectId  Int
+  date       DateTime
+  startTime  DateTime
+  endTime    DateTime
+  roomId     Int?
+  room       Room?    @relation(fields: [roomId], references: [id])
+  maxMarks   Int
+  passMarks  Int?
+  exam       Exam     @relation(fields: [examId], references: [id])
+  subject    Subject  @relation(fields: [subjectId], references: [id])
+  invigilations InvigilationAssignment[]
+  createdAt  DateTime @default(now())
+  @@index([examId, subjectId, date])
+}
+
+model Room {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  capacity  Int
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  invigilations InvigilationAssignment[]
+}
+
+model InvigilationAssignment {
+  id           Int      @id @default(autoincrement())
+  examScheduleId Int
+  staffId      String
+  role         String   // invigilator | chief-invigilator | observer
+  assignedAt   DateTime @default(now())
+
+  examSchedule ExamSchedule @relation(fields: [examScheduleId], references: [id])
+  staff        Staff        @relation(fields: [staffId], references: [id])
+  @@index([examScheduleId, staffId])
+}
+
+model HallTicket {
+  id         Int      @id @default(autoincrement())
+  studentId  String
+  examId     Int
+  fileId     String?   // reference to generated PDF in FileReference
+  issuedAt   DateTime?
+  validFrom  DateTime?
+  validTo    DateTime?
+  student    Student   @relation(fields: [studentId], references: [id])
+  exam       Exam      @relation(fields: [examId], references: [id])
+  createdAt  DateTime  @default(now())
+  @@unique([studentId, examId])
+}
+
+model QuestionPaper {
+  id          Int      @id @default(autoincrement())
+  subjectId   Int
+  examId      Int?
+  version     String?
+  fileId      String   // stored in FileReference
+  paperType   String?  // theory/practical/objective
+  createdBy   String?  // staffId
+  createdAt   DateTime @default(now())
+
+  subject     Subject  @relation(fields: [subjectId], references: [id])
+  exam        Exam?    @relation(fields: [examId], references: [id])
+}
+
+model FileReference {
+  id          String   @id @default(uuid())
+  filename    String
+  mimetype    String?
+  size        Int?
+  url         String   // S3/object URL
+  uploadedBy  String?  // userId or staffId
+  uploadedAt  DateTime @default(now())
+  purpose     String?  // photo, aadhaar_scan, answer_script, question_paper, hallticket
+  student     Student? @relation(fields: [], references: [], onDelete: Cascade)
+  staff       Staff?   @relation(fields: [], references: [], onDelete: Cascade)
+  // Note: referencing via IDs in other tables is preferred (fileId fields)
+  @@index([uploadedBy])
+}
+
+model Mark {
+  id             Int       @id @default(autoincrement())
+  studentId      String
+  subjectId      Int
+  examId         Int
+  marksTheory    Float?
+  marksPractical Float?
+  marksInternal  Float?     // internal marks if any
+  maxMarks       Int?
+  isAbsent       Boolean    @default(false)
+  grade          String?
+  gradePoint     Float?
+  enteredBy      String?    // staff publicId or userId
+  verifiedBy     String?    // staff publicId
+  verifiedAt     DateTime?
+  status         MarkStatus @default(ENTERED)
+  remarks        String?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  // relations
+  student        Student    @relation(fields: [studentId], references: [id])
+  subject        Subject    @relation(fields: [subjectId], references: [id])
+  exam           Exam       @relation(fields: [examId], references: [id])
+  audits         MarkAudit[]
+  moderations    Moderation[]
+  revaluations   RevaluationRequest[]
+
+  @@index([studentId, examId])
+  @@index([examId, subjectId])
+}
+
+model MarkAudit {
+  id         Int      @id @default(autoincrement())
+  markId     Int
+  changedBy  String?
+  oldValue   Json?
+  newValue   Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  mark       Mark     @relation(fields: [markId], references: [id])
+}
+
+model Moderation {
+  id            Int      @id @default(autoincrement())
+  markId        Int
+  moderatedBy   String?  // staff id
+  adjustment    Float?   // amount added/subtracted
+  reason        String?
+  approvedAt    DateTime?
+  createdAt     DateTime @default(now())
+
+  mark          Mark     @relation(fields: [markId], references: [id])
+}
+
+model RevaluationRequest {
+  id            Int      @id @default(autoincrement())
+  markId        Int
+  requestedBy   String?  // student id or admin
+  requestDate   DateTime @default(now())
+  status        String   @default("pending") // pending, completed, rejected
+  resultChange  Float?   // new marks - old marks (if any)
+  processedBy   String?
+  processedAt   DateTime?
+
+  mark          Mark     @relation(fields: [markId], references: [id])
+}
+
+model GradeScale {
+  id          Int      @id @default(autoincrement())
+  programId   Int?
+  name        String
+  minPercent  Float
+  maxPercent  Float
+  grade       String   // A, B, C, Pass, Fail
+  gradePoint  Float?
+  createdAt   DateTime @default(now())
+  program     Program? @relation(fields: [programId], references: [id])
+  @@index([programId])
+}
+
+model Result {
+  id            Int      @id @default(autoincrement())
+  studentId     String
+  examId        Int
+  totalMarks    Float?
+  totalMaxMarks Int?
+  percentage    Float?
+  grade         String?
+  gradePoint    Float?
+  pass          Boolean?
+  published     Boolean  @default(false)
+  publishedBy   String?
+  publishedAt   DateTime?
+  createdAt     DateTime @default(now())
+
+  student       Student @relation(fields: [studentId], references: [id])
+  exam          Exam    @relation(fields: [examId], references: [id])
+
+  @@unique([studentId, examId])
+  @@index([examId])
+}
+
+model Enrollment {
+  id           Int      @id @default(autoincrement())
+  studentId    String
+  programId    Int
+  batchId      Int
+  rollNo       String?   // college roll no
+  admissionType AdmissionType @default(REGULAR)
+  admissionDate DateTime?
+  admissionStatus String?  // admitted, cancelled
+  createdAt     DateTime  @default(now())
+
+  student       Student   @relation(fields: [studentId], references: [id])
+  program       Program   @relation(fields: [programId], references: [id])
+  batch         Batch     @relation(fields: [batchId], references: [id])
+
+  @@unique([studentId, programId])
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actorId    String?  // user id who performed action
+  actorRole  String?
+  action     String
+  entity     String?  // e.g., "mark", "student", "exam"
+  entityId   String?  // generic
+  before     Json?
+  after      Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+  @@index([actorId])
+  @@index([entity, entityId])
+}
